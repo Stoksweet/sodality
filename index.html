@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sodality</title>
+</head>
+
+<body>
+    <h1>XRPL-Connect Demo</h1>
+    <xrpl-wallet-connector id="wallet-connector"></xrpl-wallet-connector>
+
+    <div id="account-info">
+        <h2>Connected Account</h2>
+        <p><strong>Address:</strong> <span id="address">-</span></p>
+        <p><strong>Network:</strong> <span id="network">-</span></p>
+        <p><strong>Wallet:</strong> <span id="wallet">-</span></p>
+        <button id="disconnect-btn">Disconnect</button>
+    </div>
+
+    <script type="module" src="./app.ts"></script>
+</body>
+
+</html>
