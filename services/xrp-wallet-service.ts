@@ -15,90 +15,141 @@ import type {
 let client: any;
 let testWallet: Wallet;
 
+const SERVER_URL = 'wss://s.altnet.rippletest.net:51233/';
+
+// Helper to ensure client exists
+const getClient = () => {
+    if (!client) {
+        client = new Client(SERVER_URL);
+    }
+    return client;
+};
+
 // Network setup with testnet
-const setupNetwork = async () => {
-    const SERVER_URL = 'wss://s.altnet.rippletest.net:51233/';
-    client = new Client(SERVER_URL);
-    await client.connect();
-    console.log('Connected to Testnet');
+const setupNetwork = () => {
+    client = getClient();
+    return client.connect()
+        .then(() => {
+            console.log('Connected to Testnet');
+        })
+        .catch((error: any) => {
+            console.error('Failed to connect to Testnet:', error);
+            throw error;
+        });
 };
 
-const createAndFundWallet = async () => {
-    // Create a wallet and fund it with the Testnet faucet.
+const createAndFundWallet = () => {
+    const c = getClient();
     console.log('\nCreating a new wallet and funding it with Testnet XRP...');
-    const fundResult = await client.fundWallet();
-    
-    // Annotating with the Wallet type lets TypeScript check every field you touch.
-    testWallet = fundResult.wallet;
-    console.log(`Wallet: ${testWallet.address}`);
-    console.log(`Balance: ${fundResult.balance}`);
-    console.log('Account Testnet Explorer URL:');
-    console.log(`  https://testnet.xrpl.org/accounts/${testWallet.address}`);
+    return c.fundWallet()
+        .then((fundResult: any) => {
+            testWallet = fundResult.wallet;
+            console.log(`Wallet: ${testWallet.address}`);
+            console.log(`Balance: ${fundResult.balance}`);
+            console.log('Account Testnet Explorer URL:');
+            console.log(`  https://testnet.xrpl.org/accounts/${testWallet.address}`);
+        })
+        .catch((error: any) => {
+            console.error('Failed to create and fund wallet:', error);
+            throw error;
+        });
 };
 
-// To generate a wallet without funding it, uncomment the code below.
-// const testWallet: Wallet = Wallet.generate()
+const createWallet = () => {
+    const generatedWallet: Wallet = Wallet.generate();
+    console.log('Generated wallet: ', generatedWallet);
+    return Promise.resolve(generatedWallet);
+};
 
-// To provide your own seed, replace the testWallet value with the below.
-// const testWallet: Wallet = Wallet.fromSeed('your-seed-key')
+const fundWallet = (wallet: Wallet, XRPAmount: number, seed: string) => {
+    const c = getClient();
+    const existingWallet = Wallet.fromSeed(seed);
+    return c.fundWallet(
+        existingWallet,
+        { amount: '25' }
+    )
+        .then((fundResult: any) => {
+            const updatedBalance = fundResult.balance;
+            console.log('Updated Balance:', updatedBalance);
+        })
+        .catch((error: any) => {
+            console.error('Failed to fund wallet:', error);
+            throw error;
+        });
+};
 
-const newAccountInfoRequest = async () => {
-    // Build the request as an AccountInfoRequest. TypeScript verifies the command
-    // name and fields, and infers the matching AccountInfoResponse for the result.
+const newAccountInfoRequest = () => {
+    const c = getClient();
+    if (!testWallet) {
+        throw new Error('testWallet is not defined. Create or set a wallet before requesting account info.');
+    }
     console.log('\nGetting account info...');
     const request: AccountInfoRequest = {
         command: 'account_info',
         account: testWallet.address,
         ledger_index: 'validated'
     };
-    const response: AccountInfoResponse = await client.request(request);
-    console.log(JSON.stringify(response, null, 2));
+    return c.request(request)
+        .then((response: AccountInfoResponse) => {
+            console.log(JSON.stringify(response, null, 2));
+        })
+        .catch((error: any) => {
+            console.error('Failed to get account info:', error);
+            throw error;
+        });
 };
 
-const newPayment = async () => {
-    // Turn your own input values into a valid transaction. Typing the object as a
-    // Payment makes the compiler require every field and reject the wrong ones.
-    const xrpToSend = 22; // a value you might read from user input
+const newPayment = (XRPAmount: number, Destination: string, wallet: Wallet) => {
+    const c = getClient();
+    
     const payment: Payment = {
         TransactionType: 'Payment',
-        Account: testWallet.address,
-        // xrpToDrops converts the XRP amount into the drops string the ledger expects.
-        Amount: xrpToDrops(xrpToSend),
-        Destination: 'rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe' // example destination
+        Account: wallet.address,
+        Amount: xrpToDrops(XRPAmount),
+        Destination
     };
     
-    // validate() runs the same structural checks the server does, at runtime. It
-    // takes a generic transaction object, so pass the typed value through to it.
     validate(payment as unknown as Record<string, unknown>);
-    console.log('\nBuilt and validated a Payment transaction:');
+    console.log('\nBuilt and validated a Payment transaction: ', payment);
     console.log(JSON.stringify(payment, null, 2));
     
-    // Sign and submit the transaction in one call, then show the result.
-    const submitResponse = await client.submitAndWait(payment, { wallet: testWallet });
-    console.log('\nSubmitted the transaction:');
-    console.log(JSON.stringify(submitResponse.result, null, 2));
+    return c.submitSigned(payment, { wallet: wallet })
+        .then((submitResponse: any) => {
+            console.log('\nSubmitted the transaction:');
+            console.log(JSON.stringify(submitResponse.result, null, 2));
+        })
+        .catch((error: any) => {
+            console.error('Failed to submit payment transaction:', error);
+            throw error;
+        });
 };
 
+    // Ensure setupNetwork is called before subscribing or running requests
+    setupNetwork().then(() => {
+        console.log('\nListening for ledger close events...');
+        return client.request({
+            command: 'subscribe',
+            streams: ['ledger']
+        });
+    }).catch((error: any) => {
+        console.error('Failed to subscribe to ledger stream:', error);
+    });
 
-// Listen to ledger close events. The ledger argument is typed for you, so
-// ledger.ledger_index and ledger.txn_count are checked at compile time.
-console.log('\nListening for ledger close events...');
-client.request({
-    command: 'subscribe',
-    streams: ['ledger']
-});
+// client?.on('ledgerClosed', (ledger: any) => {
+//     console.log(`Ledger #${ledger.ledger_index} validated ` +
+//         `with ${ledger.txn_count} transactions!`);
+// });
 
-client.on('ledgerClosed', (ledger: any) => {
-    console.log(`Ledger #${ledger.ledger_index} validated ` +
-        `with ${ledger.txn_count} transactions!`)
-});
+// setTimeout(() => {
+//     if (client) {
+//         client.disconnect()
+//             .then(() => {
+//                 console.log('\nDisconnected');
+//             })
+//             .catch((error: any) => {
+//                 console.error('Error disconnecting client:', error);
+//             });
+//     }
+// }, 10000);
 
-// Disconnect when done so Node.js can end the process.
-// Delay this by 10 seconds to give the ledger event listener time to receive
-// and display some ledger events.
-setTimeout(async () => {
-    await client.disconnect()
-    console.log('\nDisconnected')
-}, 10000);
-
-export { setupNetwork, createAndFundWallet, newAccountInfoRequest, newPayment };
+export { setupNetwork, createAndFundWallet, newAccountInfoRequest, newPayment, createWallet, fundWallet };

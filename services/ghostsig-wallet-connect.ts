@@ -1,7 +1,8 @@
-import { xrpToDrops } from "xrpl";
+import { xrpToDrops, Client, Wallet } from "xrpl";
 import { GhostsigAdapter, WalletManager } from "xrpl-connect";
 
 let walletManager: WalletManager;
+let currentAccount: any;
 
 // Network Setup - testnet only for now
 const setupNetwork = async () => {
@@ -14,6 +15,9 @@ const setupNetwork = async () => {
     
     const account = await walletManager.connect('ghostsig');
     console.log('Ghostsig Connected:', account.address);
+    console.log('Ghostsig Account: ', account);
+    currentAccount = account;
+    console.log('Current Account: ', currentAccount);
 };
 
 // Sign & Submit transaction
@@ -22,7 +26,7 @@ const signTransaction = async (Account: string, Amount: number, toAddress: strin
         TransactionType: 'Payment',
         Destination: toAddress,
         Amount: xrpToDrops(Amount),
-        Account
+        Account: currentAccount.address
     });
     console.log("Signed Transaction blob: ", signed.tx_blob);
     
@@ -35,6 +39,7 @@ const signTransaction = async (Account: string, Amount: number, toAddress: strin
     console.log('Signed Tx Submitted: ', submitted.hash, submitted.submitted);
 };
 
+let balanceEl: any = document.getElementById('balance');
 const connectUI = () => {
     // Get DOM elements
     const connector: any = document.getElementById('wallet-connector');
@@ -43,6 +48,23 @@ const connectUI = () => {
     const networkEl: any = document.getElementById('network');
     const walletEl: any = document.getElementById('wallet');
     const disconnectBtn = document.getElementById('disconnect-btn');
+
+    const getbalance = async (account: any) => {
+        const address = account.address;
+
+        console.log('Connecting client using address: ', address);
+        const client = new Client('wss://s.altnet.rippletest.net:51233/');
+        await client.connect();
+        
+        console.log('Getting Account balance...');
+        const xrpBalance = await client.getXrpBalance(address);
+        const allBalances = await client.getBalances(address); // Includes trust line tokens
+        balanceEl.textContent = xrpBalance;
+        
+        console.log('XRP Balance:', xrpBalance);
+        console.log('All Balances: ', allBalances);
+        await client.disconnect();
+    };
 
     // Connect component to wallet manager
     connector.setWalletManager(walletManager);
@@ -54,6 +76,7 @@ const connectUI = () => {
         networkEl.textContent = account.network.name;
         walletEl.textContent = walletManager.wallet?.name;
         accountInfo.style.display = 'block';
+        getbalance(account);
     });
 
     // Handle disconnection
